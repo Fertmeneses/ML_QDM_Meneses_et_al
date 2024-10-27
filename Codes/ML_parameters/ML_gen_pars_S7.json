@@ -1,0 +1,1 @@
+{"Loss_Function": "mae", "Last_Activation_Function": "linear", "Batch_Size": 256, "Epochs": 400, "Training_p_val": 0.25, "Early_Stop_Monitor": "val_loss", "Early_Stop_Min_Delta": 0, "Early_Stop_Patience": 30, "Early_Stop_Start_From_Epoch": 60, "Early_Stop_Restore_Best_Weights": true, "z_thres": 1}
