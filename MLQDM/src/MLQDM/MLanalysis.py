@@ -12,6 +12,7 @@ Main functions:
     - keep_best_archs
     - plot_performance_vs_Naugm_vs_ptrain
     - load_preds
+    - analyze_acc_fixed_Zthres
 
 # ===========
 
@@ -47,6 +48,12 @@ plt.rcParams['figure.dpi'] = 150
 plt.rcParams['savefig.dpi'] = 200
 
 plot_markers = ["o","<","s","d","v","p","P","^","*","D",">"]
+
+color_min = {'lin_approx': 'cyan', 'phys_model': 'lightgreen'}
+color_min_edge = {'lin_approx': 'blue', 'phys_model': 'green'}
+color_bar = {'lin_approx': 'royalblue', 'phys_model': 'darkgreen'}
+markers = {'lin_approx': 'd', 'phys_model': '*'}
+bar_width = {'lin_approx': 0.5, 'phys_model': 0.4}
 
 # ============================================================================
 
@@ -302,11 +309,6 @@ def group_results(
 
     # Plot results:
     fig, ax = plt.subplots(figsize=figsize)
-    color_min = {'lin_approx': 'cyan', 'phys_model': 'lightgreen'}
-    color_min_edge = {'lin_approx': 'blue', 'phys_model': 'green'}
-    color_bar = {'lin_approx': 'royalblue', 'phys_model': 'darkgreen'}
-    markers = {'lin_approx': 'd', 'phys_model': '*'}
-    bar_width = {'lin_approx': 0.5, 'phys_model': 0.4}
     for approach in df_res_dict:
         ax.scatter(gr_res_min[approach].index,gr_res_min[approach],
             color=color_min[approach],edgecolor=color_min_edge[approach],
@@ -654,16 +656,18 @@ def load_preds(
         RF_name = f'pol{pol_azi[name][0]}_azim{pol_azi[name][1]}'
         preds_track[RF_name] = pd.concat(df_sets).reset_index() # Concatenate all results
         preds_track[RF_name] = preds_track[RF_name].sort_values('Time_s') # Sort chronologically
-
-    # Using the ground truth, obtain the parking indexes:
-    i_park = preds_track[RF_name]["Truth_m"].apply(lambda x: x in park_lvls)
+ 
     # Prepare the parking levels information:
-    preds_park = {} # Initiate
     park_lvls = sorted(park_lvls) # Sort parking levels by ascending order (just in case)
     N_lvl = {park_lvl: i+1 for i,park_lvl in enumerate(park_lvls)} # Name the levels, starting on 1
     # Build the parking predictions:
+    preds_park = {} # Initiate
     for RF in preds_track:
+        # Using the ground truth, obtain the parking indexes:
+        i_park = preds_track[RF]["Truth_m"].apply(lambda x: x in park_lvls)
+        # Select those rows which belong to parking intervals:
         preds_park[RF] = preds_track[RF].loc[i_park]
+        # Convert float values to labels:
         preds_park[RF]["Level_GT"] = preds_park[RF]["Truth_m"].apply(
         lambda x: N_lvl[x]) # Add the ground truth level
 
@@ -704,46 +708,136 @@ def load_preds(
 
 # ============================================================================
 
-###### DEVELOP:
+def analyze_acc_fixed_Zthres(
+    preds_park,
+    preds_track,
+    z_thres=1.0,
+    score_thres=None,
+    y_lims=None,
+    save_name=None,
+    save_format='png',
+    figsize=(8,3)
+    ):
+    """
+    Analyze the prediction results from the same ML algorithm trained in many rotational
+    frames, and compute the parking and tracking accuracies using a fixes position
+    tolerance value.
 
-def analyze_acc_fixed_Zthres():
-    for interp in interp_opts:
-        print('\n',interp,'\n')
-        for RF in preds_park_S7[interp]:
-            # Overall Parking accuracy:
-            corr_park_preds = np.abs(preds_park_S7[interp][RF]['Preds_m']-preds_park_S7[interp][RF]['Truth_m'])<z_thres
-            print(f'Overall PARKING accuracy: {np.round(sum(corr_park_preds)/len(corr_park_preds)*100,2)}%\n')
-            # Overall Tracking accuracy:
-            corr_track_preds = np.abs(preds_track_S7[interp][RF]['Preds_m']-preds_track_S7[interp][RF]['Truth_m'])<z_thres
-            print(f'Overall TRACKING accuracy: {np.round(sum(corr_track_preds)/len(corr_track_preds)*100,2)}%\n')
+    --- Inputs ---
+
+    {preds_park} [Dictionary]: Prediction results for parking intervals. Each key represents
+    a rotational frame, the value is a Dataframe with columns "Time_s", "Truth_m" and "Preds_m".
+    {preds_track} [Dictionary]: Prediction results for general tracking. Each key represents
+    a rotational frame, the value is a Dataframe with columns "Time_s", "Truth_m" and "Preds_m".
+    {z_thres} [Float]: Position tolerance value, used to determine which predictions are correct.
+    {score_thres} [Float or None]: If provided, plot a horizontal line in the plots, indicating a
+    threshold score for both tracking and parking accuracies.
+    {y_lims} [List]: Limits for the accuracy y-axes, with the format [ymin,ymax].
+    {save_name} [String]: filename for the figure (don't include the extension). If None, no figure is saved.
+    {save_format} [String]: saving format for the figure,don't include the dot.
+    {figsize} [Tuple]: 2 integer-elements indicating the width and height dimensions for the figure.
+
+    --- Return ---
+
+    A figure containing two plots side by side. Each plot shows the results for the
+    included approaches in {preds_park} and {preds_track}.
+
+    Left plot: General parking and tracking accuracies.
+    Right plot: Parking accuracy per level
+
+    """
+
+    # Prepare figures:
+    fig, (ax_gral,ax_lvl) = plt.subplots(1,2,figsize=figsize,width_ratios=[1, 2.5])
+    
+    # Process data:
+    for approach in preds_park:
+        print(f'\n--------- Interpolation approach: {approach} ---------\n')
+
+        # Identify parking and tracking data in the current interpolation approach:
+        data_park = preds_park[approach] # Parking data
+        data_track = preds_track[approach] # Tracking data
+        # Identify parking levels:
+        lvls = sorted(set(data_park[list(data_park.keys())[0]]['Level_GT']))
+
+        # Collect results in every rotational frame:
+        acc_park, acc_track = [], [] # Initiate accuracy results
+        park_acc_lvl = {lvl: [] for lvl in lvls} # Initiate parking detailed accuracy
+
+        for RF in data_park:
+            # Parking accuracy:
+            park_correct = np.abs(data_park[RF]['Preds_m']-data_park[RF]['Truth_m'])<z_thres # Boolean predictions list
+            acc_park.append(np.round(sum(park_correct)/len(park_correct)*100,2)) # Fraction of correct parking predictions [%]
+
+            # Tracking accuracy:
+            track_correct = np.abs(data_track[RF]['Preds_m']-data_track[RF]['Truth_m'])<z_thres # Boolean predictions list
+            acc_track.append(np.round(sum(track_correct)/len(track_correct)*100,2)) # Fraction of correct tracking predictions [%]
             
             # Parking accuracy in details:
-            park_acc_lvl = {} # Initiate
-            for lvl in sorted(set(preds_park_S7[interp][RF]['Level_GT'])):
+            for lvl in sorted(set(data_park[RF]['Level_GT'])):
                 # Select appropriate data:
-                data = preds_park_S7[interp][RF][preds_park_S7[interp][RF]['Level_GT']==lvl]
+                data = data_park[RF][data_park[RF]['Level_GT']==lvl]
                 # Evaluate predictions:
-                corr_park_preds_lvl = np.abs(data['Preds_m']-data['Truth_m'])<z_thres
-                # Calculate parking accuracy in the current parking level:
-                park_acc_lvl[lvl] = np.round(sum(corr_park_preds_lvl)/len(corr_park_preds_lvl)*100,2) # [%]
-                # Print results:
-                # print(f'PARKING accuracy for LEVEL {lvl} ({len(corr_park_preds_lvl)} points): {park_acc_lvl[lvl]}%')
-            # Plot results:
-            fig, ax = plt.subplots(figsize=figsize)
-            color_min = {'lin_approx': 'cyan', 'phys_model': 'lightgreen'}
-            color_min_edge = {'lin_approx': 'blue', 'phys_model': 'green'}
-            color_bar = {'lin_approx': 'royalblue', 'phys_model': 'darkgreen'}
-            ax.scatter(park_acc_lvl.keys(),park_acc_lvl.values(),
-                color=color_min[interp],edgecolor=color_min_edge[interp],
-                marker='d',label=f'{interp}: lowest score',alpha=1)
-            ax.bar(park_acc_lvl.keys(),park_acc_lvl.values(),
-                width=0.5,color=color_bar[interp],
-                alpha=0.3,label=f'{interp}: all results')
-            # Include scoring threshold, if any:
-            if score_thres is not None:
-                ax.axhline(80,ls='--',alpha=0.6,lw=1,color='red',label='Threshold')
+                park_lvl_correct = np.abs(data['Preds_m']-data['Truth_m'])<z_thres # Boolean predictions list
+                # Calculate parking accuracy in the current parking level and update dictionary:
+                acc_park_lvl = np.round(sum(park_lvl_correct)/len(park_lvl_correct)*100,2) # [%]
+                park_acc_lvl[lvl].append(acc_park_lvl) # [%]
 
+        # Official performance (lowest results):
+        acc_park_lowest = np.min(acc_park) # Parking lowest accuracy [%]
+        acc_track_lowest = np.min(acc_track) # Tracking lowest accuracy [%]
+        # Print results in screen:
+        print(f'Overall PARKING accuracy: {acc_park_lowest}%\n')
+        print(f'Overall TRACKING accuracy: {acc_track_lowest}%\n')
 
+        # Prepare data for [Accuracy per level] plot:
+        accs = ['Tracking','Parking']
+        min_values = np.array([acc_track_lowest,acc_park_lowest]) # [%]
+        max_values = np.array([np.max(acc_track),np.max(acc_park)]) # [%]
+
+        # Add data to [General accuracy] plot:
+        ax_gral.scatter(
+            accs,min_values,
+            color=color_min[approach],edgecolor=color_min_edge[approach],
+            marker=markers[approach],label=f'{approach}: lowest score',alpha=1)
+        ax_gral.bar(
+            accs,max_values-min_values,bottom=min_values,
+            width=bar_width[approach],color=color_bar[approach],
+            alpha=0.3,label=f'{approach}: all results')
+
+        # Prepare data for [Accuracy per level] plot:
+        low_park_acc_lvl = np.array([np.min(park_acc_lvl[lvl]) for lvl in lvls]) # Lowest parking accuracy per level [%]
+        high_park_acc_lvl = np.array([np.max(park_acc_lvl[lvl]) for lvl in lvls]) # Highest parking accuracy per level [%]
+
+        # Add data to [Accuracy per level] plot:
+        ax_lvl.scatter(
+            lvls,low_park_acc_lvl,
+            color=color_min[approach],edgecolor=color_min_edge[approach],
+            marker=markers[approach],label=f'{approach}: lowest score',alpha=1)
+        ax_lvl.bar(
+            lvls,high_park_acc_lvl-low_park_acc_lvl,bottom=low_park_acc_lvl,
+            width=bar_width[approach],color=color_bar[approach],
+            alpha=0.3,label=f'{approach}: all results')
+    
+    # General features for plot:
+
+    # Include scoring threshold, if any:
+    if score_thres is not None:
+        for ax in [ax_gral,ax_lvl]:
+            ax.axhline(80,ls='--',alpha=0.6,lw=1,color='red',label='Threshold')
+
+    # Set axes, labels and legend:
+    ax_lvl.set(xlabel='Parking level',ylabel='Parking accuracy [%]')
+    ax_gral.set(xlabel='Accuracy type',ylabel='Overall accuracy [%]')
+    for ax in [ax_gral,ax_lvl]:
+        ax.legend()
+        if y_lims is not None:
+            ax.set_ylim(y_lims)
+    fig.tight_layout()
+    if save_name:
+        ML_general.save_file(save_name,save_format=save_format)      
+
+# ============================================================================
 
     #     #df_total = df_total.reset_index() # Decouple time and z_true
     #     Z_abs_diff[name] = np.abs(df_total[df_total.columns[2]]-df_total[df_total.columns[1]]) # [m]
