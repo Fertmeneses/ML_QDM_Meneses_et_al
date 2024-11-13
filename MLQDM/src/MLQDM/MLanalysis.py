@@ -13,6 +13,7 @@ Main functions:
     - plot_performance_vs_Naugm_vs_ptrain
     - load_preds
     - analyze_acc_fixed_Zthres
+    - plot_preds_single_RF
 
 # ===========
 
@@ -30,6 +31,7 @@ import matplotlib.pyplot as plt
 # Internal packages:
 
 import MLQDM.general as ML_general
+import MLQDM.timewindows as ML_twdw
 
 # ============================================================================
 
@@ -54,6 +56,11 @@ color_min_edge = {'lin_approx': 'blue', 'phys_model': 'green'}
 color_bar = {'lin_approx': 'royalblue', 'phys_model': 'darkgreen'}
 markers = {'lin_approx': 'd', 'phys_model': '*'}
 bar_width = {'lin_approx': 0.5, 'phys_model': 0.4}
+color_Bx = '#008affff'
+color_By = '#001bffff'
+color_Bz = '#8d00ffff'
+color_Zpred = '#b50000e5'
+color_Ztrue = '#58a79cb2'
 
 # ============================================================================
 
@@ -836,6 +843,114 @@ def analyze_acc_fixed_Zthres(
     fig.tight_layout()
     if save_name:
         ML_general.save_file(save_name,save_format=save_format)      
+
+# ============================================================================
+
+def plot_preds_single_RF(
+    preds_track,
+    mag_files,
+    RF_number=0,
+    i_lims = [0,-1],
+    save_name=None,
+    save_format='png',
+    figsize=(8,3)
+    ):
+    """
+    For a chosen rotational frame, plot the magnetic predictors vs time in a single plot, and the 
+    Z-predictions and ground truth vs time in a separate plot.
+
+    --- Inputs ---
+
+    {preds_track} [Dictionary]: Prediction results for general tracking, same format as in function 
+    "load_preds". It must contain a single key representing the rotational frame, its value a Dataframe
+    with columns "Time_s", "Truth_m" and "Preds_m".
+    {mag_files} [List]: Each element is a string containing the path to the magnetic data. Be careful
+    to select the same segments as in the testing dataset (time is sorted automatically). Each magnetic
+    file must be in .csv format, with columns "Time_s", "Bx_nT", "By_nT" and "Bz_nT".
+    {RF_number} [Integer]: Index order identifying the rotational frames within the {preds_track}.
+    {i_lims} [List or None]: Index limits for plotting figures. If None, plot all data. If a list is provided,
+    it must have the format [i_min,i_max] representing the index range for the plot.
+    {save_name} [String]: filename for the figure (don't include the extension). If None, no figure is saved.
+    {save_format} [String]: saving format for the figure,don't include the dot.
+    {figsize} [Tuple]: 2 integer-elements indicating the width and height dimensions for the figure.
+
+    --- Return ---
+
+    Figures for the magnetic predictors (top) and Z-predictions vs ground truth (bottom).
+
+    """
+
+    # Identify Rotational frame and select data:
+    RF = list(preds_track.keys())[RF_number] # Format 'polX_azimY', with X and Y in [degrees]   
+    preds_selec =  preds_track[RF] # Select relevant data
+    print(f'Chosen frame: {RF}')
+
+    # Load magnetic files from testing dataset:
+    mag_data = pd.concat([pd.read_csv(file) for file in mag_files]) # Load DataFrames
+    mag_data = mag_data.sort_values('Time_s') # Sort them according to time
+
+    # Extract time and magnetic fields:
+    t = mag_data['Time_s'].to_numpy() # Time [s]
+    Bx = mag_data['Bx_nT'].to_numpy() # X-component of magnetic field [nT]
+    By = mag_data['By_nT'].to_numpy() # Y-component of magnetic field [nT]
+    Bz = mag_data['Bz_nT'].to_numpy() # Z-component of magnetic field [nT]
+
+    # Rotate magnetic data:
+    pol = float(ML_general.find_between(RF,'pol','_'))/180*np.pi # Polar angle for rotating vector [rad]
+    azim =  float(ML_general.find_between(RF,'azim',''))/180*np.pi # Azimuth angle for rotating vector [rad]
+    alpha = 90 # Rotating angle [degree]
+    n_vec = np.array( # Rotating vector, XYZ format in Laboratory frame
+        [np.sin(pol)*np.cos(azim), 
+         np.sin(pol)*np.sin(azim), 
+         np.cos(pol)])
+    Bx_rot, By_rot, Bz_rot = ML_twdw.rotate_3D(
+        np.array([Bx,By,Bz]),n_vec,alpha) # Rotated fields Bx', By', Bz' [nT]
+
+    # Obtain Z-predictions and check that the time is correct:
+    preds = preds_selec.sort_values('Time_s')
+    t_pred = preds['Time_s'].to_numpy() #  Time [s]
+    Z_pred = preds['Preds_m'].to_numpy() # Z-Predictions [m]
+    Z_true = preds['Truth_m'].to_numpy() # Ground truth for Z-positions [m]
+
+    # Reduce magnetic fields to those times in common with the predictions:
+    indexes = np.isin(t, t_pred) # Identify indexes
+    t, Bx_rot, By_rot, Bz_rot = t[indexes], Bx_rot[indexes], By_rot[indexes], Bz_rot[indexes] # Reduce arrays
+
+    # Check i_lims:
+    if i_lims[0]>len(t):
+        print('Lower index boundary is too high, converted to i=0.')
+        i_lims[0] = 0
+    if i_lims[1]>len(t):
+        print('Upper index boundary is too high, converted to i=-1.')
+        i_lims[0] = -1
+    i1,i2 = i_lims
+
+    # Plot figure for magnetic fields:
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.plot(t[i1:i2],(Bx_rot-Bx_rot.min())[i1:i2],color=color_Bx)
+    ax.plot(t[i1:i2],(By_rot-By_rot.max())[i1:i2],color=color_By)
+    ax.plot(t[i1:i2],(Bz_rot-Bz_rot.max()-(By_rot.max()-By_rot.min()))[i1:i2],color=color_Bz)
+    ax.set_xticks([]) # Remove x_ticks
+    ax.set_yticks([20]) # Set an arbitrary number to align this plot with the next one
+    for spine in ['right','top','bottom']:
+        ax.spines[spine].set_visible(False)
+    ax.set_ylabel('Magnetic signal')
+    fig.tight_layout()
+    if save_name:
+        ML_general.save_file(save_name+'_mag_fields',save_format=save_format)  
+
+    # Plot figure for Z-predictions:
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.plot(t_pred[i1:i2]/60,Z_pred[i1:i2],color=color_Zpred,alpha=1)
+    ax.plot(t_pred[i1:i2]/60,Z_true[i1:i2],ls='--',color=color_Ztrue,alpha=0.8)
+    for z in np.append(0,4.1+np.arange(0,3.7*6+0.1,3.7)):
+        ax.axhline(z,lw=0.5,alpha=0.3,color='brown')
+    for spine in ['right','top']:
+        ax.spines[spine].set_visible(False)
+    ax.set(xlabel='Time [min]', ylabel='Z-Position [m]')
+    fig.tight_layout()
+    if save_name:
+        ML_general.save_file(save_name+'_Zpreds',save_format=save_format)  
 
 # ============================================================================
 
