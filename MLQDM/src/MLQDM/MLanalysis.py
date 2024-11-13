@@ -61,6 +61,7 @@ color_By = '#001bffff'
 color_Bz = '#8d00ffff'
 color_Zpred = '#b50000e5'
 color_Ztrue = '#58a79cb2'
+linestyle = {'lin_approx': '-', 'phys_model': '--'}
 
 # ============================================================================
 
@@ -715,10 +716,10 @@ def load_preds(
 
 # ============================================================================
 
-def analyze_acc_fixed_Zthres(
+def analyze_acc_fixed_Ztol(
     preds_park,
     preds_track,
-    z_thres=1.0,
+    z_tol=1.0,
     score_thres=None,
     y_lims=None,
     save_name=None,
@@ -727,7 +728,7 @@ def analyze_acc_fixed_Zthres(
     ):
     """
     Analyze the prediction results from the same ML algorithm trained in many rotational
-    frames, and compute the parking and tracking accuracies using a fixes position
+    frames, and compute the parking and tracking accuracies using a fixed position
     tolerance value.
 
     --- Inputs ---
@@ -736,7 +737,7 @@ def analyze_acc_fixed_Zthres(
     a rotational frame, the value is a Dataframe with columns "Time_s", "Truth_m" and "Preds_m".
     {preds_track} [Dictionary]: Prediction results for general tracking. Each key represents
     a rotational frame, the value is a Dataframe with columns "Time_s", "Truth_m" and "Preds_m".
-    {z_thres} [Float]: Position tolerance value, used to determine which predictions are correct.
+    {z_tol} [Float]: Position tolerance value, used to determine which predictions are correct.
     {score_thres} [Float or None]: If provided, plot a horizontal line in the plots, indicating a
     threshold score for both tracking and parking accuracies.
     {y_lims} [List]: Limits for the accuracy y-axes, with the format [ymin,ymax].
@@ -773,11 +774,11 @@ def analyze_acc_fixed_Zthres(
 
         for RF in data_park:
             # Parking accuracy:
-            park_correct = np.abs(data_park[RF]['Preds_m']-data_park[RF]['Truth_m'])<z_thres # Boolean predictions list
+            park_correct = np.abs(data_park[RF]['Preds_m']-data_park[RF]['Truth_m'])<z_tol # Boolean predictions list
             acc_park.append(np.round(sum(park_correct)/len(park_correct)*100,2)) # Fraction of correct parking predictions [%]
 
             # Tracking accuracy:
-            track_correct = np.abs(data_track[RF]['Preds_m']-data_track[RF]['Truth_m'])<z_thres # Boolean predictions list
+            track_correct = np.abs(data_track[RF]['Preds_m']-data_track[RF]['Truth_m'])<z_tol # Boolean predictions list
             acc_track.append(np.round(sum(track_correct)/len(track_correct)*100,2)) # Fraction of correct tracking predictions [%]
             
             # Parking accuracy in details:
@@ -785,7 +786,7 @@ def analyze_acc_fixed_Zthres(
                 # Select appropriate data:
                 data = data_park[RF][data_park[RF]['Level_GT']==lvl]
                 # Evaluate predictions:
-                park_lvl_correct = np.abs(data['Preds_m']-data['Truth_m'])<z_thres # Boolean predictions list
+                park_lvl_correct = np.abs(data['Preds_m']-data['Truth_m'])<z_tol # Boolean predictions list
                 # Calculate parking accuracy in the current parking level and update dictionary:
                 acc_park_lvl = np.round(sum(park_lvl_correct)/len(park_lvl_correct)*100,2) # [%]
                 park_acc_lvl[lvl].append(acc_park_lvl) # [%]
@@ -954,14 +955,110 @@ def plot_preds_single_RF(
 
 # ============================================================================
 
+def analyze_acc_track_vs_Ztol(
+    preds_track,
+    z_tols=[0.1,0.5,1,1.5,2.0],
+    score_thres=80,
+    z_guides=[1,2],
+    y_lims=None,
+    save_name=None,
+    save_format='png',
+    figsize=(4,4)
+    ):
+    """
+    Analyze the prediction results from the same ML algorithm trained in many rotational
+    frames, and compute the tracking accuracy for a range of position-tolerance values.
+
+    --- Inputs ---
+
+    {preds_track} [Dictionary]: Prediction results for general tracking. Each key represents
+    a rotational frame, the value is a Dataframe with columns "Time_s", "Truth_m" and "Preds_m".
+    {z_tols} [List or Numpy array]: Values for Z-position tolerance to be evaluated, in [m].
+    {score_thres} [Float]: Threshold score for tracking accuracy, [%].
+    {y_lims} [List]: Limits for the accuracy y-axes, with the format [ymin,ymax].
+    {save_name} [String]: filename for the figure (don't include the extension). If None, no figure is saved.
+    {save_format} [String]: saving format for the figure,don't include the dot.
+    {figsize} [Tuple]: 2 integer-elements indicating the width and height dimensions for the figure.
+
+    --- Return ---
+    
+    Plot: Tracking accuracy vs Z-tolerance for the approaches included in {preds_track}.
+    The critical Z-tolerance values are highlighted, representing the minimum tolerance to
+    achieve a tracking accuracy above {score_thres}.
+
+    The following output variables are dictionaries representing the tracking accuracy results
+    correlated with {z_tols}. The keys are the approaches included in {preds_track}, the values
+    are Numpy arrays with the accuracy values, in [%].
+    {acc_track_low} [Dictionary]: Lowest tracking accuracy among all frames.
+    {acc_track_high} [Dictionary]: Highest tracking accuracy among all frames.
+
+    """
+
+    # Prepare figures:
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Process data:
+    acc_track_low, acc_track_high = {}, {} # Initiate
+    label_crit = 'Critical Z-tol.' # Initiate label
+    for approach in preds_track:
+        print(f'Analyzing Interpolation approach: {approach}.')
+
+        # Collect results in every rotational frame, for every tolerance value in {z_tols}:
+        acc_track = {z_tol:[] for z_tol in z_tols} # Initiate accuracy results
+
+        for RF in preds_track[approach]:
+            data = preds_track[approach][RF] # Identify relevant data
+            for z_tol in z_tols:
+                # Calculate tracking accuracy:
+                track_correct = np.abs(data['Preds_m']-data['Truth_m'])<z_tol # Boolean predictions list
+                acc_track[z_tol].append(np.round(sum(track_correct)/len(track_correct)*100,2)) # Fraction of correct tracking predictions [%]
+
+        # Calculate lowest and highest results in all frames:
+        acc_track_low[approach] = np.array([min(acc_track[z_tol]) for z_tol in z_tols]) # Lowest tracking accuracy [%]
+        acc_track_high[approach] = np.array([max(acc_track[z_tol]) for z_tol in z_tols]) # Highest tracking accuracy [%]
+        # Identify critical point for accuracy above threshold:
+        crit_idx = np.argmax(acc_track_low[approach]>score_thres)
+
+        # Add data to the plot:
+        ax.plot( # Lowest accuracy
+            z_tols,acc_track_low[approach],
+            color=color_min_edge[approach],ls=linestyle[approach],lw=0.75,alpha=1,label=f'Lowest acc. {approach}')
+        ax.fill_between( # All results
+            z_tols,acc_track_low[approach],acc_track_high[approach],
+            lw=0,color=color_min_edge[approach],alpha=0.3,label=f'All results {approach}')
+        ax.scatter( # Critical point for acc. threshold
+            z_tols[crit_idx],acc_track_low[approach][crit_idx],s=figsize[0]*6,color='red',linewidth=0.5,
+            edgecolor='brown',label=label_crit)
+        label_crit = None # Stop writing this label
+
+    # Add plot guidelines:
+    ax.axhline(score_thres,ls='--',alpha=0.6,lw=1,color='red',label='Threshold')
+    # ax.text(z_th[min_z_idx]+0.05,target_acc-18, f'{np.round(z_th[min_z_idx],2)} m',
+    #         ha='right', rotation=90, color='red',alpha=0.6)
+    label = 'Reference values' # Prepare legend
+    for z in z_guides:
+        ax.axvline(z,ls=':',lw=0.7,color='gray',alpha=0.8)
+        # ax.scatter(z_th[idx],acc[idx],s=12,color='darkgray',linewidth=0.5,
+        #            edgecolor='gray',label=label) 
+        # ax.text(z_th[idx]-0.01,acc[idx]-6, f'{np.round(acc[idx],1)}%',
+        #     ha='right', rotation=0, color='gray', alpha=0.9)
+        # label = None # Stop labeling reference values
+
+    # Additional configuration:
+    ax.set(xlabel='Z-tolerance [m]',ylabel='Tracking accuracy [%]')
+    ax.legend()
+    if y_lims is not None:
+        ax.set_ylim(y_lims)
+    fig.tight_layout()
+    if save_name:
+        ML_general.save_file(save_name,save_format=save_format)
+
+    return acc_track_low, acc_track_high
+
     #     #df_total = df_total.reset_index() # Decouple time and z_true
     #     Z_abs_diff[name] = np.abs(df_total[df_total.columns[2]]-df_total[df_total.columns[1]]) # [m]
     #     acc_1m[name] = np.round(sum(Z_abs_diff[name]<1)/len(Z_abs_diff[name])*100,2) # Accuracy for 1-m-threshold
     #     acc_0p5m[name] = np.round(sum(Z_abs_diff[name]<0.5)/len(Z_abs_diff[name])*100,2) # Accuracy for 1-m-threshold
-        
-
-    # # Identify the parking intervals (equal in all rotational frames):
-    # pred1 = preds[all_names[0]]
 
 
 
