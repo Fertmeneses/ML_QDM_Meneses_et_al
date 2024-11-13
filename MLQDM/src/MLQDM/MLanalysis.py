@@ -14,6 +14,8 @@ Main functions:
     - load_preds
     - analyze_acc_fixed_Zthres
     - plot_preds_single_RF
+    - analyze_acc_track_vs_Ztol
+    - map_acc_track_vs_RF
 
 # ===========
 
@@ -1033,16 +1035,8 @@ def analyze_acc_track_vs_Ztol(
 
     # Add plot guidelines:
     ax.axhline(score_thres,ls='--',alpha=0.6,lw=1,color='red',label='Threshold')
-    # ax.text(z_th[min_z_idx]+0.05,target_acc-18, f'{np.round(z_th[min_z_idx],2)} m',
-    #         ha='right', rotation=90, color='red',alpha=0.6)
-    label = 'Reference values' # Prepare legend
     for z in z_guides:
         ax.axvline(z,ls=':',lw=0.7,color='gray',alpha=0.8)
-        # ax.scatter(z_th[idx],acc[idx],s=12,color='darkgray',linewidth=0.5,
-        #            edgecolor='gray',label=label) 
-        # ax.text(z_th[idx]-0.01,acc[idx]-6, f'{np.round(acc[idx],1)}%',
-        #     ha='right', rotation=0, color='gray', alpha=0.9)
-        # label = None # Stop labeling reference values
 
     # Additional configuration:
     ax.set(xlabel='Z-tolerance [m]',ylabel='Tracking accuracy [%]')
@@ -1055,22 +1049,83 @@ def analyze_acc_track_vs_Ztol(
 
     return acc_track_low, acc_track_high
 
-    #     #df_total = df_total.reset_index() # Decouple time and z_true
-    #     Z_abs_diff[name] = np.abs(df_total[df_total.columns[2]]-df_total[df_total.columns[1]]) # [m]
-    #     acc_1m[name] = np.round(sum(Z_abs_diff[name]<1)/len(Z_abs_diff[name])*100,2) # Accuracy for 1-m-threshold
-    #     acc_0p5m[name] = np.round(sum(Z_abs_diff[name]<0.5)/len(Z_abs_diff[name])*100,2) # Accuracy for 1-m-threshold
+# ============================================================================
 
+def map_acc_track_vs_RF(
+    preds_track,
+    z_tol=1.0,
+    acc_lims=None,
+    pol_max_deg=90,
+    save_name=None,
+    save_format='png',
+    figsize=(4,4)
+    ):
+    """
+    Analyze the prediction results from the same ML algorithm trained in many rotational
+    frames, and map the tracking accuracy for a collection of rotational frames, in a
+    polar plot indicating polar and azimuth rotating angles in the laboratory frame for
+    each frame (the rotating angle is assumed to be fixed).
 
+    --- Inputs ---
 
+    {preds_track} [DataFrame]: Prediction results for general tracking. The Dataframe must have
+    columns "Time_s", "Truth_m" and "Preds_m".
+    {z_tol} [Float]: Z-position tolerance to evaluate predictions, in [m].
+    {acc_lims} [List or None]: If a list with format [acc_min,acc_max] (both floats) is provided,
+    set the color boundaries for the accuracy map.
+    {pol_max_deg} [Float]: Maximum polar angle to use in the colorbar scale [degree].
+    {save_name} [String]: filename for the figure (don't include the extension). If None, no figure is saved.
+    {save_format} [String]: saving format for the figure,don't include the dot.
+    {figsize} [Tuple]: 2 integer-elements indicating the width and height dimensions for the figure.
 
+    --- Return ---
+    
+    Plot: XXXXXX Tracking accuracy vs Z-tolerance for the approaches included in {preds_track}.
+    The critical Z-tolerance values are highlighted, representing the minimum tolerance to
+    achieve a tracking accuracy above {score_thres}.
 
+    """
 
+    # Analyze data, obtaining the tracking accuracy for each rotational frame:
+    azimuth = [] # List for azimuth angles in rotational frames [rad]
+    polar = [] # List for polar angles in rotational frames [rad] 
+    acc_track = [] # List for tracking accuracies in rotational frames [%]
 
+    for RF in preds_track:
 
+        # Identify polar and azimuth angles:
+        azimuth.append(float(ML_general.find_between(RF,'azim',''))/180*np.pi) # Azimuth angle [rad]  
+        polar.append(float(ML_general.find_between(RF,'pol','_'))) # Polar angle [degree]
 
-#     {z_thres} [Float]: Z-position threshold to compute correct predictions according
-    #to the absolute difference between predicted and ground truth values.
+        # Compute accuracy:
+        data = preds_track[RF] # Identify relevant data
+        track_correct = np.abs(data['Preds_m']-data['Truth_m'])<z_tol # Boolean predictions list
+        acc_track.append(np.round(sum(track_correct)/len(track_correct)*100,2)) # Fraction of correct tracking predictions [%]
 
-    # Values for each 
-    #key are boolean-type Numpy arrays representing correct (True) or incorrect (False)
-    #predictions, correlated with {t_col}, according to {z_thres}.
+    # Summarize results:
+    print(f'Minimum tracking accuracy: {min(acc_track)}%')
+    print(f'Maximum tracking accuracy: {max(acc_track)}%')
+
+    # Define accuracy limits if not provided:
+    if acc_lims is None:
+        acc_lims = [min(acc_track)-1,max(acc_track)+1] # [%]
+
+    # Plot tracking accuracy as a function of the rotational frame:
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'},figsize=figsize)
+    for (azim,pol,acc) in zip(azimuth,polar,acc_track):
+        sc = ax.scatter(
+            azim, pol, c=acc,
+            edgecolor='gray',lw=0.3,vmin=acc_lims[0],vmax=acc_lims[1],
+            s=75,cmap='RdYlGn',alpha=0.95)
+    # Configure colorbar:
+    cbar = plt.colorbar(sc)
+    cbar.ax.set_ylabel('Tracking accuracy [%]', rotation=90)
+    # Additional configuration:
+    ax.set_rmax(pol_max_deg+10) # Set maximum circle (polar angles)
+    ax.set_rticks(np.linspace(0,pol_max_deg,4).astype(int))  # Less radial ticks
+    ax.set_rlabel_position(-25)  # Move radial labels away from plotted line
+    fig.tight_layout()
+    if save_name:
+        ML_general.save_file(save_name,save_format=save_format)
+
+# ============================================================================
