@@ -1080,9 +1080,8 @@ def map_acc_track_vs_RF(
 
     --- Return ---
     
-    Plot: XXXXXX Tracking accuracy vs Z-tolerance for the approaches included in {preds_track}.
-    The critical Z-tolerance values are highlighted, representing the minimum tolerance to
-    achieve a tracking accuracy above {score_thres}.
+    Polar plot for the tracking accuracy as a function of both azimuth and polar angles of each
+    rotational frame.
 
     """
 
