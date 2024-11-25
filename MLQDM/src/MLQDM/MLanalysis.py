@@ -248,6 +248,7 @@ def group_results(
     y_lims=[0,100],
     save_name=None,
     save_format='png',
+    legend_on=True,
     figsize=(8,4)    
     ):
     """
@@ -274,6 +275,7 @@ def group_results(
     {y_lims} [List]: Limits for the y-axis, related to {eval_col}, with the format [ymin,ymax].
     {save_name} [String]: filename for the figure (don't include the extension). If None, no figure is saved.
     {save_format} [String]: saving format for the figure,don't include the dot.
+    {legend_on} [Boolean]: if True, the plot shows the legend. If False, it is hidden.
     {figsize} [Tuple]: 2 integer-elements indicating the width and height dimensions for the figure.
 
     --- Return ---
@@ -334,7 +336,8 @@ def group_results(
     ax.set_ylim(y_lims)
     ax.set(xlabel=group_by,ylabel=metric)
     ax.set_title(f'ML results grouped by {group_by}')
-    ax.legend(loc='lower right',ncol=3)
+    if legend_on:
+        ax.legend(loc='lower right',ncol=3)
     fig.tight_layout() 
     if save_name:
         ML_general.save_file(save_name,save_format=save_format)
