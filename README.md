@@ -9,7 +9,7 @@ Magnetic sensing offers a compelling alternative to traditional tracking systems
 The **major challenge for magnetic sensing** lies in **analyzing and interpreting the data**. Usually, magnetic information has a complex signature convoluted with environmental noise, requiring sophiticated physical models and calculations to extract meaningful positional information. **In this project, we solve this problem by developing a Machine Learning algorithm capable of predicting the position of an object directly from magnetic measurements**.
 
 <center><figure>
-  <img src="assets/Summary_application.png" alt="Application summary" width="90%"> 
+  <img src="assets/Summary_application.png" alt="Application summary" width="100%"> 
   <figcaption><sup>Quantum diamond sensing and machine learning applied to object monitoring.</sup></figcaption>
 </figure></center>
 
@@ -20,7 +20,7 @@ Our **sensing platform** is based on **nitrogen-vacancy (NV) defects** in a **di
 The **quantum diamond magnetometer** works by exciting NV defects with a **green laser**, pushing the electrons to high energy levels. As these electrons naturally decay into low energy levels, we employ a **photodetector** to read the **light emmited in that quantum process**. Additionally, we can **manipulate the quantum system by using microwaves** and set the electrons into **"bright" or "dark" energy levels**, which have different light emission intensities. As the energy difference between these dark and bright levels depend on the **external magnetic field**, we can use protocols that detect variations in the light emission and precisely identify the external magnetic field.
 
 <center><figure>
-  <img src="assets/Magnetometer.png" alt="Quantum Diamond Magnetometer" width="70%"> 
+  <img src="assets/Magnetometer.png" alt="Quantum Diamond Magnetometer" width="100%"> 
   <figcaption><sup>Quantum diamond magnetometer: setup description.</sup></figcaption>
 </figure></center>
 
@@ -33,7 +33,7 @@ Given that **magnetic measurements are noisy and fluctuate over time**, we don't
 Our ML architecture is inspired in **computer vision techniques, applied to one-dimensional (1D) timeseries** rather than 2D images. As shown in the image below, **we use three sequences as the input data** (you can think of them as the RGB colors in a 2D image), one for each magnetic field component $B_X$, $B_Y, $B_Z$. The ML algorithm uses a **set of convolutional layers**, correlating close data points (in time) and extracting features, which are then passed to **fully connected layers**, finally producing a **single output: the Z position of the elevator**. As the whole process is really fast (less than 1 ms), the ML algorithm can predict position after position as we measure the magnetic fields with a frequency of 0.1 seconds, working as a **real-time object monitoring application**.
 
 <center><figure>
-  <img src="assets/ML_architecture.png" alt="Machine Learning Architecture" width="90%"> 
+  <img src="assets/ML_architecture.png" alt="Machine Learning Architecture" width="100%"> 
   <figcaption><sup>Machine learning architecture.</sup></figcaption>
 </figure></center>
 
@@ -44,7 +44,7 @@ Since our goal for the monitoring application is to rely exclusively on experime
 In our project, **we explored several ML architecture and tuning strategies**, testing various hyperparameters and also making major decisions, for example **deciding if the input information should include all magnetic components $(B_X,B_Y,B_Z)$ or just one or two, and optimizing the duration of the time window**. We also assessed **how much we can reduce the training dataset** while keeping a minimum performance.
 
 <center><figure>
-  <img src="assets/Optimization.png" alt="Machine Learning Optimization" width="70%"> 
+  <img src="assets/Optimization.png" alt="Machine Learning Optimization" width="100%"> 
   <figcaption><sup>Optimization process: accuracy vs. size of the training dataset.</sup></figcaption>
 </figure></center>
 
@@ -55,7 +55,7 @@ In each optimization step, we evaluated the ML performance using an **accuracy m
 After the training process, we ended up with a **ML model that reached approximately 90% accuracy in the training dataset**. When we evaluated this ML model in the **testing dataset**, we obtained a very similar result, meaning that, in average, **9 out of 10 points were correctly predicted every second within a 1-meter tolerance**. And looking closer, we observed that the main source of errors were predictions around Levels 3 and 4, which were confused with each other. From a physical point of view, we believe that at these positions the elevator cage and counterweight are very close to each other and the magnetic signals become very similar.
 
 <center><figure>
-  <img src="assets/Predictions.png" alt="Machine Learning Predictions" width="90%"> 
+  <img src="assets/Predictions.png" alt="Machine Learning Predictions" width="100%"> 
   <figcaption><sup>Machine learning predictions for new data.</sup></figcaption>
 </figure></center>
 
