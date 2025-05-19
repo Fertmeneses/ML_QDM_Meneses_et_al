@@ -1,7 +1,7 @@
 title: Quantum Sensing and Machine Learning applied to Object Monitoring
 email: fertmeneses@gmail.com
 logo: assets/web_face.png
-description: Object monitoring application based on quantum magnetic sensing and artificial intelligence, by Fernando Meneses.
+description: Object monitoring application based on quantum magnetic sensing and artificial intelligence, a research project by The University of Melbourne, RMIT, CQC2T and Phasor Innovation.
 show_downloads: True
-#google_analytics: G-14XGKWTF54
+google_analytics: G-6W5YHJ48KQ
 theme: jekyll-theme-minimal
